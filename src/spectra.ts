@@ -32,7 +32,7 @@ export function encodeString(str: string) {
   }
   // make quoted string eg for values
   // "" in text field throws Kicad error: changed in ' (BUG FIX)
-  return `"${str.replace(/"/g, "'")}"`;
+  return `"${str.replace(/"/g, `'`)}"`;
 }
 
 function encodeNumber(value: number) {
@@ -50,10 +50,6 @@ export function encodeValue(value: ISpectraList | string | number) {
 }
 
 export function encodeObject(object: ISpectraList): string {
-  // testing and undefines in output? Find them with this:
-  // return '(' +
-  // object.map((v) => (v === undefined ? 'undefined' : v)).filter(notNull).map(encodeValue).join(' ') +
-  // ')';
   return '(' + object.filter(notNull).map(encodeValue).join(' ') + ')';
 }
 

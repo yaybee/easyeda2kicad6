@@ -35,7 +35,7 @@ function convertLibHole(args: string[], transform: IParentTransform) {
       ['drill', size],
       ['layers', '*.Cu', '*.Mask'],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 function convertLibVia(
@@ -61,7 +61,7 @@ function convertLibVia(
         ['drill', size],
         ['layers', '*.Cu', '*.Mask'],
       ],
-    ];
+    ] as ISpectraList;
     return [hole, null, null];
   } else {
     if (isFp) {
@@ -256,7 +256,7 @@ export function convertFp(
       ],
       // via is not part of footprint anymore; however sorted incorrectly
       ...footprintViaToPcb,
-    ];
+    ] as ISpectraList;
     //
     // called from convertFootprint for processing footprint.json
     //
@@ -337,7 +337,7 @@ export function convertFp(
         ['scale', ['xyz', 1, 1, 1]],
         ['rotate', ['xyz', 0, 0, 0]],
       ],
-    ].filter((obj) => obj != null);
+    ].filter((obj) => obj != null) as ISpectraList;
   }
 }
 

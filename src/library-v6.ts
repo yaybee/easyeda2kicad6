@@ -39,13 +39,6 @@ function kiY(coordY: string): string {
   }
   return kiy;
 }
-function rotate({ x, y }: ICoordinates, degrees: number): ICoordinates {
-  const radians = (degrees / 180) * Math.PI;
-  return {
-    x: x * Math.cos(radians) - y * Math.sin(radians),
-    y: x * Math.sin(radians) + y * Math.cos(radians),
-  };
-}
 
 function kiCoords(x: string, y: string, transform: ICoordinates = { x: 0, y: 0 }): ICoordinates {
   return {
@@ -75,7 +68,7 @@ function kiEffects(
     bold === 'bold' ? 'bold' : null,
     justify === 'start' ? ['justify', 'left'] : justify === 'end' ? ['justify', 'right'] : null,
     visible === '1' ? null : 'hide',
-  ];
+  ] as ISpectraList;
 }
 
 function kiFillColor(stroke: string, fill: string): string {
@@ -218,7 +211,7 @@ export function convertPin(
       '_LF4_',
       ['number', numberText, kiEffects(numberFontSize)],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 function convertRect(args: string[], parentCoords: ICoordinates) {
@@ -236,7 +229,7 @@ function convertRect(args: string[], parentCoords: ICoordinates) {
       ['stroke', ['width', 0]],
       ['fill', ['type', kiFillColor(strokeColor, fillColor)]],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 function convertCircle(args: string[], parentCoords: ICoordinates) {
@@ -251,7 +244,7 @@ function convertCircle(args: string[], parentCoords: ICoordinates) {
       ['stroke', ['width', 0]],
       ['fill', ['type', kiFillColor(strokeColor, fillColor)]],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 function convertEllipse(
@@ -271,7 +264,7 @@ function convertEllipse(
         ['stroke', ['width', 0]],
         ['fill', ['type', kiFillColor(strokeColor, fillColor)]],
       ],
-    ];
+    ] as ISpectraList;
   } else {
     const msg = `Warning: shape E (ellips) with unequal radiuses (${id})${
       parentCoords.id !== undefined ? ` of ${parentCoords.id}` : ''
@@ -297,11 +290,19 @@ function convertArc(
     }: could not determine arc shape; arc ignored `;
     return reportError(msg, conversionState);
   }
+  // note: Kicad schematics uses a different (strange?) arc configuraton than the pcb version.
+  // It seems not possible to create arcs over 180 degrees.
+  // Conversion of eda svg to Kicad is at best marginal
   const [startX, startY] = startPoint.split(' ');
   const [svgRx, svgRy, xAxisRotation, largeArc, sweep, endX, endY] = arcParams.split(' ');
-  const start = kiCoords(startX, startY, parentCoords);
-  const end = kiCoords(endX, endY, parentCoords);
-  const { x: rx, y: ry } = rotate({ x: parseFloat(svgRx), y: parseFloat(svgRy) }, 0);
+  let start = kiCoords(startX, startY, parentCoords);
+  let end = kiCoords(endX, endY, parentCoords);
+  const { x: rx, y: ry } = { x: parseFloat(svgRx), y: parseFloat(svgRy) };
+  if (sweep) {
+    const save = start;
+    start = end;
+    end = save;
+  }
   const { cx, cy, extent } = computeArc(
     start.x,
     start.y,
@@ -319,7 +320,12 @@ function convertArc(
       'arc',
       ['start', kiUnits(start.x), kiUnits(start.y)],
       ['end', kiUnits(end.x), kiUnits(end.y)],
-      ['radius', ['at', kiUnits(cx), kiUnits(cy)], ['length', kiUnits(rx)]],
+      [
+        'radius',
+        ['at', kiUnits(cx), kiUnits(cy)],
+        ['length', kiUnits(rx)],
+        // ['angles', angle, angle],
+      ],
       ['stroke', ['width', 0]],
       ['fill', ['type', kiFillColor(strokeColor, fillColor)]],
     ],
@@ -350,7 +356,7 @@ function pointListToPolygon(
       ['stroke', ['width', 0]],
       ['fill', ['type', kiFillColor(strokeColor, fillColor)]],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 function convertPolyline(args: string[], parentCoords: ICoordinates): ISpectraList {
@@ -420,7 +426,7 @@ export function convertText(args: string[], parentCoords: ICoordinates): ISpectr
         ['at', kiUnits(coords.x), kiUnits(coords.y), rotation === '90' ? 900 : 0],
         kiEffects(fontSize, visable, textAnchor, fontWeigth, fontStyle),
       ],
-    ];
+    ] as ISpectraList;
   } else {
     return null;
   }
@@ -483,7 +489,7 @@ function convertAnnotations(
       ['at', 0, 0, 0],
       ['effects', ['font', ['size', 1.27, 1.27]], visible === '1' ? null : 'hide'],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 function convertHead(head: LibraryHead, compProp: IProperties): ISpectraList {
@@ -511,6 +517,7 @@ function convertHead(head: LibraryHead, compProp: IProperties): ISpectraList {
           break;
         case 'Value':
           compProp.value = prop;
+          compProp.lib = prop;
           break;
         case 'ki_keywords':
           prop = prop.split('(')[0];
@@ -536,12 +543,12 @@ function convertHead(head: LibraryHead, compProp: IProperties): ISpectraList {
 
 function shapeToCRC32(str: string, CRCTable: number[]): number {
   let crc = -1;
-  /* tslint:disable:no-bitwise */
   for (let i = 0, iTop = str.length; i < iTop; i++) {
+    // tslint:disable-next-line
     crc = (crc >>> 8) ^ CRCTable[(crc ^ str.charCodeAt(i)) & 0xff];
   }
+  // tslint:disable-next-line
   return (crc ^ -1) >>> 0;
-  /* tslint:enable:no-bitwise */
 }
 
 function symbolCompare(
@@ -573,7 +580,8 @@ export function convertLibrary(
   schematicsLIB: string | null,
   library: IEasyEDALibrary | null,
   conversionState: IConversionState,
-  CRCTable: number[]
+  CRCTable: number[],
+  inputFileName: string
 ): ISpectraList {
   const compProp: IProperties = {
     ref: '',
@@ -660,10 +668,9 @@ export function convertLibrary(
       '_LF1_',
       [
         'symbol',
-        // 'EasyEDA' should be the file name of the library,
-        // but it seems not to be mandatory: EasyEDA.kicad_sym
-        // multiple symbols can be manually collected in this library
-        'EasyEDA:' + compProp.ref,
+        // The library name is derived from the json input file.
+        // This creates a symbol file per pcb project.
+        inputFileName + ':' + compProp.lib,
         // pin names and number are auto placed (no coords needed)
         // show or hide are controlled globally based on the
         // show & hide count of the Eda symbol
@@ -684,12 +691,12 @@ export function convertLibrary(
         ...symbolLibProp,
         '_LF2_',
         // here only the text definitions
-        ['symbol', compProp.ref + '_0_0', ...symbolLibText, ...errorReports],
+        ['symbol', compProp.lib + '_0_0', ...symbolLibText, ...errorReports],
         '_LF2_',
         // here all other than property, pin & text definitions
         [
           'symbol',
-          `${compProp.ref}_0_1`,
+          `${compProp.lib}_0_1`,
           ...symbolLibArc,
           ...symbolLibCircle,
           ...symbolLibRect,
@@ -697,9 +704,9 @@ export function convertLibrary(
         ],
         '_LF2_',
         // here only the pin definitions
-        ['symbol', `${compProp.ref}_1_1`, ...symbolLibPin],
+        ['symbol', `${compProp.lib}_1_1`, ...symbolLibPin],
       ],
-    ];
+    ] as ISpectraList;
     //
     // called from schematics-v6 for processing LIB shape
     //
@@ -806,7 +813,7 @@ export function convertLibrary(
         '_LF1_',
         [
           'symbol',
-          'EasyEDA:' + compProp.lib,
+          inputFileName + ':' + compProp.lib,
           compProp.pinNumberShowCount < compProp.pinNumberHideCount
             ? ['pin_numbers', 'hide']
             : null,
@@ -832,7 +839,7 @@ export function convertLibrary(
           '_LF2_',
           ['symbol', `${compProp.lib}_1_1`, ...symbolLibPin],
         ],
-      ];
+      ] as ISpectraList;
       conversionState.savedLibs.push(symbol);
     }
     //
@@ -844,7 +851,7 @@ export function convertLibrary(
       '_LF_',
       [
         'symbol',
-        ['lib_id', 'EasyEDA:' + compProp.lib],
+        ['lib_id', inputFileName + ':' + compProp.lib],
         kiAt(x, kiY(y), 0),
         ['unit', 1],
         ['in_bom', 'yes'],
@@ -872,7 +879,7 @@ export function convertLibrary(
 function flatten<T>(arr: T[]) {
   return ([] as T[]).concat(...arr);
 }
-function convertLibraryToV6Array(library: IEasyEDALibrary): ISpectraList {
+function convertLibraryToV6Array(library: IEasyEDALibrary, inputFileName: string): ISpectraList {
   const conversionState: IConversionState = {
     schRepCnt: 0,
     schReports: [],
@@ -882,7 +889,7 @@ function convertLibraryToV6Array(library: IEasyEDALibrary): ISpectraList {
     savedLibMsgs: [],
     convertingSymFile: true,
   };
-  const result = convertLibrary(null, library, conversionState, [0]);
+  const result = convertLibrary(null, library, conversionState, [0], inputFileName);
   return [
     //
     // Kicad lib symbols are normalized with 0,0 as center
@@ -896,7 +903,7 @@ function convertLibraryToV6Array(library: IEasyEDALibrary): ISpectraList {
     ['version', 20210126],
     ['generator', 'kicad_symbol_editor'],
     ...result,
-  ];
+  ] as ISpectraList;
 }
 // main.ts will automatically detect an Eda library .json as input.
 //
@@ -908,6 +915,6 @@ function convertLibraryToV6Array(library: IEasyEDALibrary): ISpectraList {
 // The generated output file is saved as symbol-name.kicad_sym.
 // Import file in Kicad using:
 // menu Preferences > Manage Symbol Libraries
-export function convertLibraryV6(library: IEasyEDALibrary): string {
-  return encodeObject(convertLibraryToV6Array(library));
+export function convertLibraryV6(library: IEasyEDALibrary, inputFileName: string): string {
+  return encodeObject(convertLibraryToV6Array(library, inputFileName));
 }

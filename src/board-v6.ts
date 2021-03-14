@@ -1,7 +1,8 @@
-import { IEasyEDABoard } from './easyeda-types';
+import { IEasyEDABoard, ISvgNode } from './easyeda-types';
 import { encodeObject, ISpectraList } from './spectra';
 import { convertFp } from './footprint-v6';
 import { computeArc } from './svg-arc';
+import { parseSvgPath, svgToPoly } from './svgnode';
 
 // doc: https://docs.easyeda.com/en/DocumentFormat/3-EasyEDA-PCB-File-Format/index.html#shapes
 
@@ -41,7 +42,7 @@ export function getLayerName(id: string, conversionState: IConversionState): str
     return layers[id];
   } else {
     // Inner layers: 21 -> In1.Cu
-    let intId = parseInt(id, 10);
+    const intId = parseInt(id, 10);
     if (intId >= 21 && intId <= 50) {
       const innerLayerId = intId - 20;
       conversionState.innerLayers = Math.max(conversionState.innerLayers, innerLayerId);
@@ -80,7 +81,7 @@ export function kiUnits(value: string | number, round: boolean = false): number 
   // output file of schematics and library:
   // 'return value; // * 0.254;'
   const kiValue = value * 0.254;
-  if (round == true) {
+  if (round === true) {
     // rounded at 0.1mm for boardoutline (issue #45)
     // hopefully this clears the issue for all rounded rectangles
     // last resort: redraw edge manually
@@ -128,7 +129,7 @@ export function kiAt(
   transform?: IParentTransform
 ): ISpectraList {
   const coords = kiCoords(x, y, transform);
-  return ['at', kiUnits(coords.x), kiUnits(coords.y), kiAngle(angle)];
+  return ['at', kiUnits(coords.x), kiUnits(coords.y), kiAngle(angle)] as ISpectraList;
 }
 
 function kiStartEnd(
@@ -144,7 +145,7 @@ function kiStartEnd(
   return [
     ['start', kiUnits(start.x, round), kiUnits(start.y, round)],
     ['end', kiUnits(end.x, round), kiUnits(end.y, round)],
-  ];
+  ] as ISpectraList;
 }
 
 function reportFpError(
@@ -167,7 +168,7 @@ function reportFpError(
       ['layer', 'Cmts.User'],
       ['effects', ['font', ['size', 0.8, 0.8], ['thickness', 0.2]]],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 function reportPcbError(
@@ -189,7 +190,7 @@ function reportPcbError(
       ['layer', 'Cmts.User'],
       ['effects', ['font', ['size', 2, 2], ['thickness', 0.4]], ['justify', 'left']],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 export function reportError(
@@ -200,12 +201,12 @@ export function reportError(
   conversionState.msgRepCnt += 1;
   const lines = multiLine !== undefined ? multiLine : 1;
   if (conversionState.convertingFpFile) {
-    //console.info(`MOD: ${conversionState.msgRepCnt} - ${msgPcb}`);
+    // console.info(`MOD: ${conversionState.msgRepCnt} - ${msgPcb}`);
     conversionState.msgReports.push(
       reportFpError(conversionState.msgRepCnt, msg, lines, conversionState)
     );
   } else {
-    //console.info(`PCB: ${conversionState.msgRepCnt} - ${msgPcb}`);
+    // console.info(`PCB: ${conversionState.msgRepCnt} - ${msgPcb}`);
     conversionState.msgReports.push(
       reportPcbError(conversionState.msgRepCnt, msg, lines, conversionState)
     );
@@ -247,7 +248,7 @@ export function convertVia(
       netId > 0 ? null : ['free'],
       ['net', netId > 0 ? netId : 0],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 export function convertTrack(
@@ -261,7 +262,7 @@ export function convertTrack(
   const netId = getNetId(conversionState, net);
 
   const coordList = coords.split(' ');
-  const result = [];
+  const result: ISpectraList = [];
   const layerName = getLayerName(layer, conversionState);
   if (layerName.charAt(0) === '#') {
     return reportError(
@@ -372,7 +373,7 @@ export function convertText(
         ['justify', 'left', layerName.charAt(0) === 'B' ? 'mirror' : null],
       ],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 export function convertArc(
@@ -381,7 +382,7 @@ export function convertArc(
   objName = 'gr_arc',
   transform?: IParentTransform
 ): ISpectraList {
-  var round = false;
+  let round = false;
   const [width, layer, net, path, _, id, locked] = args;
   const layerName = getLayerName(layer, conversionState);
   if (layerName.charAt(0) === '#') {
@@ -427,7 +428,7 @@ export function convertArc(
     const msg = `Error :function svg-arc.ts returned invalid result for ARC (${id})${parent} on layer ${layerName}; arc ignored`;
     return reportError(msg, conversionState);
   }
-  var angle = Math.abs(extent);
+  let angle = Math.abs(extent);
   if (layerName === 'Edge.Cuts') {
     round = true;
     if (angle > 89 && angle < 91) {
@@ -447,7 +448,7 @@ export function convertArc(
       ['width', kiUnits(width)],
       ['layer', layerName],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 function getDrill(
@@ -547,7 +548,7 @@ export function convertPad(
     ? rectangleSize(pointList, parseFloat(rotation))
     : [width, height];
   let padNum;
-  padOnBoard ? (padNum = 1) : (padNum = parseInt(num, 10));
+  padNum = padOnBoard ? 1 : parseInt(num, 10);
   let type = '';
   let netId = 0;
   let layer = [];
@@ -585,7 +586,7 @@ export function convertPad(
   // strange behaviour of Kicad for custom pad;
   // workaround: make size = hole-radius*2 + 0.1 for custom shape
   let size: ISpectraList = [];
-  let xy = kiUnits(parseFloat(radius) * 2 + 0.1);
+  const xy = kiUnits(parseFloat(radius) * 2 + 0.1);
   isCustomShape
     ? (size = ['size', xy, xy])
     : (size = [
@@ -616,7 +617,7 @@ export function convertPad(
           ]
         : null,
     ],
-  ];
+  ] as ISpectraList;
 }
 
 export function convertBoardPad(args: string[], conversionState: IConversionState): ISpectraList {
@@ -676,7 +677,7 @@ export function convertBoardPad(args: string[], conversionState: IConversionStat
       '_LF1_',
       ...convertPad(args, conversionState, { ...kiCoords(x, y), angle: 0 }, true),
     ],
-  ];
+  ] as ISpectraList;
 }
 
 export function convertCircle(
@@ -711,7 +712,7 @@ export function convertCircle(
       ['layer', layerName],
       ['width', kiUnits(strokeWidth)],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 export function convertRect(
@@ -759,7 +760,7 @@ export function convertRect(
         '_LF1_',
         ['polygon', ['pts', ...polygonPoints]],
       ],
-    ];
+    ] as ISpectraList;
   }
   return [
     objName === 'gr_rect' ? '_LF_' : '_LF1_',
@@ -771,7 +772,7 @@ export function convertRect(
       ['width', 0.1],
       ['fill', 'solid'],
     ],
-  ];
+  ] as ISpectraList;
 }
 function pointListToPolygon(points: string[], parentCoords?: IParentTransform): ISpectraList {
   const polygonPoints = [];
@@ -811,7 +812,8 @@ export function convertPolygon(
   if (type !== 'solid') {
     const parent = parentCoords !== undefined ? ` of ${parentCoords.fpId}` : '';
     return reportError(
-      `Warning: unsupported type ${type} found in SOLIDREGION ${id}${parent} on layer ${layerName}; solidregion ignored`,
+      `Warning: unsupported type ${type} found in SOLIDREGION ${id}${parent}` +
+        ` on layer ${layerName}; solidregion ignored`,
       conversionState
     );
   }
@@ -819,11 +821,15 @@ export function convertPolygon(
   if (!polygonPoints) {
     const parent = parentCoords !== undefined ? ` of ${parentCoords.fpId}` : '';
     return reportError(
-      `Error: No points defined  for polygon in SOLIDREGION (${id})${parent} on layer ${layerName}; solidregion ignored`,
+      `Error: No points defined  for polygon in SOLIDREGION (${id})${parent}` +
+        ` on layer ${layerName}; solidregion ignored`,
       conversionState
     );
   }
-  return ['_LF1_', ['fp_poly', ['pts', ...polygonPoints], ['layer', layerName], ['width', 0]]];
+  return [
+    '_LF1_',
+    ['fp_poly', ['pts', ...polygonPoints], ['layer', layerName], ['width', 0]],
+  ] as ISpectraList;
 }
 
 export function convertCopperArea(args: string[], conversionState: IConversionState): ISpectraList {
@@ -901,7 +907,7 @@ export function convertCopperArea(args: string[], conversionState: IConversionSt
       '_LF1_',
       ['polygon', ['pts', ...polygonPoints]],
     ],
-  ];
+  ] as ISpectraList;
 }
 
 export function convertSolidRegion(
@@ -956,7 +962,7 @@ export function convertSolidRegion(
           '_LF1_',
           ['polygon', ['pts', ...polygonPoints]],
         ],
-      ];
+      ] as ISpectraList;
     case 'solid':
       // convert solidregion with net to Kicad Cu zone
       if (type === 'solid' && isCopper(layerName) && netId > 0) {
@@ -976,7 +982,7 @@ export function convertSolidRegion(
             '_LF1_',
             ['polygon', ['pts', ...polygonPoints]],
           ],
-        ];
+        ] as ISpectraList;
         // filled shape
       } else {
         return [
@@ -995,7 +1001,7 @@ export function convertSolidRegion(
       return [
         '_LF_',
         ['gr_poly', ['pts', ...polygonPoints], ['layer', layerName], ['width', 0.254]],
-      ];
+      ] as ISpectraList;
     default:
       return reportError(
         `Warning: unsupported type ${type} found in SOLIDREGION ${id} on layer ${layerName}; solidregion ignored`,
@@ -1032,7 +1038,40 @@ export function convertHole(args: string[]): ISpectraList {
         ['layers', '*.Cu', '*.Mask'],
       ],
     ],
-  ];
+  ] as ISpectraList;
+}
+
+function convertSvgNode(args: string[], conversionState: IConversionState): ISpectraList {
+  const origin: number[] = [4000, 3000]; // Eda origin
+  const scale: number = 0.254; // 10 mill Eda units to mm
+  const resolution: number = 1; // 4 points per mm curve
+  const result: ISpectraList = [];
+  let svgShapes: Array<Array<Array<string | number>>>;
+  const imageSvg: ISvgNode = JSON.parse(args[0]);
+  const layerName = getLayerName(imageSvg.layerid, conversionState);
+  if (layerName.charAt(0) === '#') {
+    return reportError(
+      `${layerName.substring(1)}found in SVGNODE (${imageSvg.gId}); svgnode ignored`,
+      conversionState
+    );
+  }
+  const data = parseSvgPath(imageSvg.attrs.d, conversionState, layerName);
+  if (data) {
+    svgShapes = svgToPoly(data, resolution, origin, scale);
+    let svgShape: Array<Array<string | number>>;
+    for (svgShape of svgShapes) {
+      result.push([
+        'gr_poly',
+        ['pts', ...svgShape],
+        ['layer', layerName],
+        ['width', 0.127],
+        ['fill', 'solid'],
+      ]);
+    }
+    return result;
+  } else {
+    return [];
+  }
 }
 
 function flatten<T>(arr: T[]) {
@@ -1040,7 +1079,7 @@ function flatten<T>(arr: T[]) {
 }
 
 export function convertBoardToArray(board: IEasyEDABoard): ISpectraList {
-  var shape: any;
+  let shape: string;
   const vias: ISpectraList = [];
   const tracks: ISpectraList = [];
   const texts: ISpectraList = [];
@@ -1052,6 +1091,7 @@ export function convertBoardToArray(board: IEasyEDABoard): ISpectraList {
   const footprints: ISpectraList = [];
   const padvias: ISpectraList = [];
   const rects: ISpectraList = [];
+  const svgnodes: ISpectraList = [];
 
   const { nets } = board.routerRule || { nets: [] as string[] };
   const conversionState: IConversionState = {
@@ -1102,27 +1142,27 @@ export function convertBoardToArray(board: IEasyEDABoard): ISpectraList {
       padvias.push(...convertBoardPad(args, conversionState));
     } else if (type === 'RECT') {
       rects.push(...convertRect(args, conversionState));
+    } else if (type === 'SVGNODE') {
+      svgnodes.push(...convertSvgNode(args, conversionState));
     } else {
-      if (type !== 'SVGNODE') {
-        reportError(
-          `Warning: unsupported shape ${type} found on pcb board; ignored`,
-          conversionState
-        );
-      }
+      reportError(
+        `Warning: unsupported shape ${type} found on pcb board; ignored`,
+        conversionState
+      );
     }
   }
   if (conversionState.pcbCuZoneCount > 0) {
-    const msg =
+    const msg1 =
       `Info: total of ${conversionState.pcbCuZoneCount} Cu zones were created. Run DRC to check for overlap of zones.` +
       '\\nAdjust zone priority to solve this. Adjust other parameters as needed.' +
       '\\nNote: merge zones if possible (right click selected 2 zones > Zones > Merge zones).';
-    reportError(msg, conversionState, 3);
+    reportError(msg1, conversionState, 3);
   }
   if (conversionState.pcbKeepoutZoneCount > 0) {
-    const msg =
+    const msg2 =
       `Info: total of ${conversionState.pcbKeepoutZoneCount} keep-out zones were create. Run DRC to check for zone settings.` +
       '\\nAdjust zone keep-out checkboxes as needed.';
-    reportError(msg, conversionState, 2);
+    reportError(msg2, conversionState, 2);
   }
   if (conversionState.msgRepCnt > 1) {
     console.warn(
@@ -1138,6 +1178,7 @@ export function convertBoardToArray(board: IEasyEDABoard): ISpectraList {
     ...tracks,
     ...copperareas,
     ...solidregions,
+    ...svgnodes,
     ...arcs,
     ...rects,
     ...circles,
@@ -1207,7 +1248,7 @@ export function convertBoardToArray(board: IEasyEDABoard): ISpectraList {
     ['layers', ...layers],
     ...outputObjs,
     ...flatten(conversionState.msgReports),
-  ];
+  ] as ISpectraList;
 }
 
 export function convertBoardV6(board: IEasyEDABoard): string {

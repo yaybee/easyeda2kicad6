@@ -90,7 +90,7 @@ describe('convertShape as standin for conversions from function convertLibrary',
 
 describe('convertLibrary full test', () => {
   it('should convert an EasyEDA library file to a Kicad symbol file', () => {
-    const schRes = convertLibrary(null, fixtureJSON, conversionState, CRCTable);
+    const schRes = convertLibrary(null, fixtureJSON, conversionState, CRCTable, 'test');
     expect(schRes).toMatchSnapshot();
   });
 });

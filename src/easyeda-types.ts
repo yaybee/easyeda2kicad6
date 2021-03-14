@@ -156,3 +156,19 @@ export interface LibraryHead {
   hasIdFlag?: boolean;
   utime?: number;
 }
+
+export interface ISvgNode {
+  gId: string;
+  nodeName: string;
+  nodeType: string;
+  layerid: string;
+  attrs: SvgAttrs;
+}
+
+export interface SvgAttrs {
+  d: string;
+  id: string;
+  stroke: string;
+  layerid: string;
+  display?: string;
+}

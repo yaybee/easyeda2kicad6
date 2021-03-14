@@ -120,7 +120,7 @@ describe('convertShape as standin for conversions from function convertSchematic
 // this test will fail on the changed uuid; at least a check all other items are OK.
 describe('convertSchematic full test', () => {
   it('should convert an EasyEDA schematic file to a Kicad schematic file', () => {
-    const schRes = convertSchematicV6(fixtureJSON, 1);
+    const schRes = convertSchematicV6(fixtureJSON, 1, 'test');
     expect(schRes).toMatchSnapshot();
   });
 });
